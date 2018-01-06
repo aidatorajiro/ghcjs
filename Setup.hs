@@ -5,7 +5,7 @@ import           Control.Monad         (when)
 import           Data.Char             (isSpace)
 import           Data.List             (isPrefixOf, isSuffixOf)
 import           Data.Maybe            (maybe, listToMaybe)
-import           Data.Version          (showVersion)
+import           Data.Version          hiding (showVersion)
 
 import           Distribution.PackageDescription hiding (Flag)
 import           Distribution.Simple
@@ -13,6 +13,7 @@ import           Distribution.Simple.LocalBuildInfo
 import           Distribution.Simple.Setup
 import           Distribution.Simple.Utils
 import           Distribution.System
+import           Distribution.Types.UnqualComponentName
 import           Distribution.Verbosity
 
 import           System.Exit           (ExitCode(..))
@@ -57,7 +58,7 @@ installFlagsToCopyFlags flags = defaultCopyFlags
 
 ghcjsPostCopy :: Args -> CopyFlags -> PackageDescription -> LocalBuildInfo -> IO ()
 ghcjsPostCopy args flags descr lbi
-  | (FlagName "no-wrapper-install", True) `elem` configConfigurationsFlags (configFlags lbi) =
+  | (mkFlagName "no-wrapper-install", True) `elem` configConfigurationsFlags (configFlags lbi) =
         return () -- User has opted to skip wrapper script installation. Let's hope they know what they're doing.
                   -- Executables will keep their original names, e.g. ghcjs.bin, ghcjs-pkg.bin
   | otherwise = do
@@ -85,7 +86,7 @@ requiresWrapper exe = exe `notElem` notWrapped
 
 getWrapperEnv :: Verbosity -> PackageDescription -> Flag CopyDest -> InstallDirs FilePath -> [Executable] -> IO WrapperEnv
 getWrapperEnv v descr copyDest' installDirs exes
-  | [Executable name _ bi] <- filter ((=="ghcjs").exeName) exes =
+  | [Executable name _ _ bi] <- filter ((=="ghcjs").unUnqualComponentName.exeName) exes =
      let ghcjsVal xs =
            trim <$> rawSystemStdout v (bindir installDirs </> "ghcjs") ["--ghcjs-setup-print", xs]
      in  WrapperEnv <$> ghcjsVal "--print-default-topdir"
@@ -124,7 +125,7 @@ copyWrapperW v env descr installDirs exe = do
             hClose h
             installOrdinaryFile v tmp destOptions
     where
-      e            = exeName exe
+      e            = unUnqualComponentName (exeName exe)
       e'           = dropExtensions e
       b            = bindir installDirs
       srcExe       = b </> e' <.> "exe"                           -- ex: bin\ghcjs.exe
@@ -166,7 +167,7 @@ copyWrapperU v env descr installDirs exe
       removeFile (b </> srcExe)
       linkFileU v b (srcExe ++ "-" ++ verSuff env) srcExe
   where
-    e                = exeName exe
+    e                = unUnqualComponentName (exeName exe)
     e'               = dropExtensions e
     b                = bindir installDirs
     srcExe           = e                                                       -- ex: bin/ghcjs                 (removed, replaced with symlink to destExe if there are no wrappers)
